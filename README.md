@@ -6,13 +6,13 @@ OpenCode Power-Up is an optimized expansion for OpenCode, providing advanced age
 
 ## Installation
 
-To use OpenCode Power-Up, clone this repository directly into your `.opencode` directory:
+To use OpenCode Power-Up, clone this repository directly into your `.opencode` directory in your project folder:
 
 ```bash
 git clone https://github.com/oscarpoudel/OpenCode-Power-Up.git .opencode
 ```
 
-If you already have an `.opencode` directory, ensure this content is merged into it.
+If you already have an `.opencode` directory after you create it in your project folder, ensure this content is merged into it.
 
 ## Features
 
