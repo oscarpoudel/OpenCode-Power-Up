@@ -85,7 +85,7 @@ Full configuration in `opencode.json`.
 
 ```json
 {
-  "model": "anthropic/claude-sonnet-4-5",
+  "model": "wulver-vllm/Qwen36-Qwen36-27b",
   "small_model": "anthropic/claude-haiku-4-5",
   "plugin": ["./plugins"],
   "instructions": [

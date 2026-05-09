@@ -138,7 +138,7 @@
     "security-reviewer": {
       "description": "Security vulnerability detection and remediation specialist. Use after writing code that handles user input, authentication, API endpoints, or sensitive data.",
       "mode": "subagent",
-      "model": "anthropic/claude-opus-4-5",
+      "model": "wulver-vllm/Qwen36-Qwen36-27b",
       "prompt": "{file:prompts/agents/security-reviewer.txt}",
       "tools": {
         "read": true,
@@ -150,7 +150,7 @@
     "tdd-guide": {
       "description": "Test-Driven Development specialist enforcing write-tests-first methodology. Use when writing new features, fixing bugs, or refactoring code. Ensures 80%+ test coverage.",
       "mode": "subagent",
-      "model": "anthropic/claude-opus-4-5",
+      "model": "wulver-vllm/Qwen36-Qwen36-27b",
       "prompt": "{file:prompts/agents/tdd-guide.txt}",
       "tools": {
         "read": true,
@@ -162,7 +162,7 @@
     "build-error-resolver": {
       "description": "Build and TypeScript error resolution specialist. Use when build fails or type errors occur. Fixes build/type errors only with minimal diffs.",
       "mode": "subagent",
-      "model": "anthropic/claude-opus-4-5",
+      "model": "wulver-vllm/Qwen36-Qwen36-27b",
       "prompt": "{file:prompts/agents/build-error-resolver.txt}",
       "tools": {
         "read": true,
@@ -174,7 +174,7 @@
     "e2e-runner": {
       "description": "End-to-end testing specialist using Playwright. Generates, maintains, and runs E2E tests for critical user flows.",
       "mode": "subagent",
-      "model": "anthropic/claude-opus-4-5",
+      "model": "wulver-vllm/Qwen36-Qwen36-27b",
       "prompt": "{file:prompts/agents/e2e-runner.txt}",
       "tools": {
         "read": true,
@@ -210,7 +210,7 @@
     "go-reviewer": {
       "description": "Expert Go code reviewer specializing in idiomatic Go, concurrency patterns, error handling, and performance.",
       "mode": "subagent",
-      "model": "anthropic/claude-opus-4-5",
+      "model": "wulver-vllm/Qwen36-Qwen36-27b",
       "prompt": "{file:prompts/agents/go-reviewer.txt}",
       "tools": {
         "read": true,
@@ -222,7 +222,7 @@
     "go-build-resolver": {
       "description": "Go build, vet, and compilation error resolution specialist. Fixes Go build errors with minimal changes.",
       "mode": "subagent",
-      "model": "anthropic/claude-opus-4-5",
+      "model": "wulver-vllm/Qwen36-Qwen36-27b",
       "prompt": "{file:prompts/agents/go-build-resolver.txt}",
       "tools": {
         "read": true,
@@ -234,7 +234,7 @@
     "database-reviewer": {
       "description": "PostgreSQL database specialist for query optimization, schema design, security, and performance. Incorporates Supabase best practices.",
       "mode": "subagent",
-      "model": "anthropic/claude-opus-4-5",
+      "model": "wulver-vllm/Qwen36-Qwen36-27b",
       "prompt": "{file:prompts/agents/database-reviewer.txt}",
       "tools": {
         "read": true,
@@ -246,7 +246,7 @@
     "cpp-reviewer": {
       "description": "Expert C++ code reviewer specializing in memory safety, modern C++ idioms, concurrency, and performance. Use for all C++ code changes.",
       "mode": "subagent",
-      "model": "anthropic/claude-opus-4-5",
+      "model": "wulver-vllm/Qwen36-Qwen36-27b",
       "prompt": "{file:prompts/agents/cpp-reviewer.txt}",
       "tools": {
         "read": true,
@@ -258,7 +258,7 @@
     "cpp-build-resolver": {
       "description": "C++ build, CMake, and compilation error resolution specialist. Fixes build errors, linker issues, and template errors with minimal changes.",
       "mode": "subagent",
-      "model": "anthropic/claude-opus-4-5",
+      "model": "wulver-vllm/Qwen36-Qwen36-27b",
       "prompt": "{file:prompts/agents/cpp-build-resolver.txt}",
       "tools": {
         "read": true,
@@ -270,7 +270,7 @@
     "docs-lookup": {
       "description": "Documentation specialist using Context7 MCP to fetch current library and API documentation with code examples.",
       "mode": "subagent",
-      "model": "anthropic/claude-sonnet-4-5",
+      "model": "wulver-vllm/Qwen36-Qwen36-27b",
       "prompt": "{file:prompts/agents/docs-lookup.txt}",
       "tools": {
         "read": true,
@@ -282,7 +282,7 @@
     "harness-optimizer": {
       "description": "Analyze and improve the local agent harness configuration for reliability, cost, and throughput.",
       "mode": "subagent",
-      "model": "anthropic/claude-sonnet-4-5",
+      "model": "wulver-vllm/Qwen36-Qwen36-27b",
       "prompt": "{file:prompts/agents/harness-optimizer.txt}",
       "tools": {
         "read": true,
@@ -293,7 +293,7 @@
     "java-reviewer": {
       "description": "Expert Java and Spring Boot code reviewer specializing in layered architecture, JPA patterns, security, and concurrency.",
       "mode": "subagent",
-      "model": "anthropic/claude-opus-4-5",
+      "model": "wulver-vllm/Qwen36-Qwen36-27b",
       "prompt": "{file:prompts/agents/java-reviewer.txt}",
       "tools": {
         "read": true,
@@ -305,7 +305,7 @@
     "java-build-resolver": {
       "description": "Java/Maven/Gradle build, compilation, and dependency error resolution specialist. Fixes build errors with minimal changes.",
       "mode": "subagent",
-      "model": "anthropic/claude-opus-4-5",
+      "model": "wulver-vllm/Qwen36-Qwen36-27b",
       "prompt": "{file:prompts/agents/java-build-resolver.txt}",
       "tools": {
         "read": true,
@@ -317,7 +317,7 @@
     "kotlin-reviewer": {
       "description": "Kotlin and Android/KMP code reviewer. Reviews Kotlin code for idiomatic patterns, coroutine safety, Compose best practices.",
       "mode": "subagent",
-      "model": "anthropic/claude-opus-4-5",
+      "model": "wulver-vllm/Qwen36-Qwen36-27b",
       "prompt": "{file:prompts/agents/kotlin-reviewer.txt}",
       "tools": {
         "read": true,
@@ -329,7 +329,7 @@
     "kotlin-build-resolver": {
       "description": "Kotlin/Gradle build, compilation, and dependency error resolution specialist. Fixes Kotlin build errors with minimal changes.",
       "mode": "subagent",
-      "model": "anthropic/claude-opus-4-5",
+      "model": "wulver-vllm/Qwen36-Qwen36-27b",
       "prompt": "{file:prompts/agents/kotlin-build-resolver.txt}",
       "tools": {
         "read": true,
@@ -341,7 +341,7 @@
     "loop-operator": {
       "description": "Operate autonomous agent loops, monitor progress, and intervene safely when loops stall.",
       "mode": "subagent",
-      "model": "anthropic/claude-sonnet-4-5",
+      "model": "wulver-vllm/Qwen36-Qwen36-27b",
       "prompt": "{file:prompts/agents/loop-operator.txt}",
       "tools": {
         "read": true,
@@ -352,7 +352,7 @@
     "python-reviewer": {
       "description": "Expert Python code reviewer specializing in PEP 8 compliance, Pythonic idioms, type hints, security, and performance.",
       "mode": "subagent",
-      "model": "anthropic/claude-opus-4-5",
+      "model": "wulver-vllm/Qwen36-Qwen36-27b",
       "prompt": "{file:prompts/agents/python-reviewer.txt}",
       "tools": {
         "read": true,
@@ -364,7 +364,7 @@
     "rust-reviewer": {
       "description": "Expert Rust code reviewer specializing in idiomatic Rust, ownership, lifetimes, concurrency, and performance.",
       "mode": "subagent",
-      "model": "anthropic/claude-opus-4-5",
+      "model": "wulver-vllm/Qwen36-Qwen36-27b",
       "prompt": "{file:prompts/agents/rust-reviewer.txt}",
       "tools": {
         "read": true,
@@ -376,7 +376,7 @@
     "rust-build-resolver": {
       "description": "Rust build, Cargo, and compilation error resolution specialist. Fixes Rust build errors with minimal changes.",
       "mode": "subagent",
-      "model": "anthropic/claude-opus-4-5",
+      "model": "wulver-vllm/Qwen36-Qwen36-27b",
       "prompt": "{file:prompts/agents/rust-build-resolver.txt}",
       "tools": {
         "read": true,
