@@ -207,7 +207,18 @@ Configure with `.opencode/opencode-auto-continue.jsonc` (all keys optional):
 }
 ```
 
-Runtime control: `/ac status`, `/ac on`, `/ac off`, `/ac reset`.
+Runtime control:
+
+| Command | Scope | Effect |
+|---------|-------|--------|
+| `/ac` or `/ac status` | — | Show resolved settings, location, pattern counts, config path |
+| `/ac on` / `/ac off` | This session only | Toggle without touching the config file |
+| `/ac reset` | This session only | Drop session overrides and reload from the config file |
+| `/ac global on` / `/ac global off` | This location | Persist the toggle to `opencode-auto-continue.jsonc` |
+| `/ac global reset` | This location | Re-read the config file from disk |
+
+Note: OpenCode passes only the text *after* the command name to a command, so
+`/ac status` arrives as `status`. The command accepts both forms.
 
 ## License
 MIT

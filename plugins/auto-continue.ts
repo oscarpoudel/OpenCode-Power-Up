@@ -358,8 +358,13 @@ export default Plugin.define({
           name: "ac",
           description: "auto-continue status/on/off/reset",
           execute: async ({ sessionID, prompt }) => {
-            const arg = prompt.text.trim().split(/\s+/).slice(1).join(" ").trim()
-            const [cmd] = arg.split(/\s+/)
+            // In V2 prompt.text holds only the text AFTER the command name, so
+            // "/ac status" arrives as "status". Tolerate the command name being
+            // echoed back too, so both forms parse the same.
+            const tokens = prompt.text.trim() ? prompt.text.trim().split(/\s+/) : []
+            const head = tokens[0]?.replace(/^\//, "")
+            if (head === "ac" || head === "auto-continue") tokens.shift()
+            const cmd: string | undefined = tokens[0] || undefined
             const base = configFor(directory) ?? defaults()
             const reply = (text: string) => ctx.session.synthetic({ sessionID, text })
             const sessionOverrides = s.overrides.get(sessionID) ?? {}
@@ -394,20 +399,37 @@ export default Plugin.define({
                 )
                 return
               case "on":
-                base.enabled = true
+                // Session-scoped only. Writing the config file needs "global on".
                 sessionOverrides.enabled = true
                 s.overrides.set(sessionID, sessionOverrides)
                 s.states.delete(sessionID)
-                await persist()
-                await reply(`auto-continue enabled (${describe(effective(sessionID, base))})`)
+                await reply(`auto-continue enabled for this session (${describe(effective(sessionID, base))})`)
                 return
               case "off":
-                base.enabled = false
                 sessionOverrides.enabled = false
                 s.overrides.set(sessionID, sessionOverrides)
                 s.states.delete(sessionID)
-                await reply("auto-continue disabled for this location")
+                await reply("auto-continue disabled for this session (config file unchanged)")
                 return
+              case "global": {
+                const which = tokens[1]
+                if (which === "on") base.enabled = true
+                else if (which === "off") base.enabled = false
+                else if (which === "reset") {
+                  const reloaded = await loadConfig(directory)
+                  s.configs.set(directory, reloaded)
+                  await reply(`auto-continue reloaded from config (${describe(configFor(directory)!)}`)
+                  return
+                } else {
+                  await reply("usage: /ac global on|off|reset")
+                  return
+                }
+                s.overrides.delete(sessionID)
+                s.states.delete(sessionID)
+                await persist()
+                await reply(`auto-continue globally ${base.enabled ? "enabled" : "disabled"} (${describe(configFor(directory)!)}); wrote ${configPath}`)
+                return
+              }
               case "reset": {
                 s.overrides.delete(sessionID)
                 s.states.delete(sessionID)
@@ -417,7 +439,7 @@ export default Plugin.define({
                 return
               }
               default:
-                await reply("usage: /ac [status|on|off|reset]")
+                await reply("usage: /ac [status|on|off|reset|global on|global off|global reset]")
             }
           },
         })
