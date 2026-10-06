@@ -15,7 +15,7 @@
  *   V1 event.properties         ->  V2 event.data
  *
  * Sends "continue" when a session goes idle after a retryable error.
- * Config: <project>/.opencode/opencode-auto-continue.jsonc (all keys optional).
+ * Config: <location>/.opencode/opencode-auto-continue.jsonc (all keys optional).
  */
 
 import { readFile, writeFile } from "node:fs/promises"
@@ -59,16 +59,25 @@ const DEFAULT_EXCLUDE_PATTERNS = [
   "operation was aborted",
 ]
 
-const DEFAULTS = {
-  enabled: true,
-  throttleMs: 5_000,
-  delayMs: 500,
-  maxConsecutive: 5,
-  errorPatterns: DEFAULT_ERROR_PATTERNS,
-  excludePatterns: DEFAULT_EXCLUDE_PATTERNS,
+interface Config {
+  enabled: boolean
+  throttleMs: number
+  delayMs: number
+  maxConsecutive: number
+  errorPatterns: string[]
+  excludePatterns: string[]
 }
 
-type Config = typeof DEFAULTS
+function defaults(): Config {
+  return {
+    enabled: true,
+    throttleMs: 5_000,
+    delayMs: 500,
+    maxConsecutive: 5,
+    errorPatterns: [...DEFAULT_ERROR_PATTERNS],
+    excludePatterns: [...DEFAULT_EXCLUDE_PATTERNS],
+  }
+}
 
 interface SessionState {
   pending: boolean
@@ -84,7 +93,7 @@ interface V2Error {
   response?: { body?: string }
 }
 
-/** Minimal JSONC: strip // and /* *\/ comments, then trailing commas. */
+/** Minimal JSONC: strip // and block comments, then trailing commas. */
 function parseJsonc(raw: string): unknown {
   let out = ""
   let inString = false
@@ -140,7 +149,7 @@ function num(v: unknown): number | undefined {
 }
 
 async function loadConfig(directory: string): Promise<Config> {
-  const config: Config = { ...DEFAULTS, errorPatterns: [...DEFAULT_ERROR_PATTERNS], excludePatterns: [...DEFAULT_EXCLUDE_PATTERNS] }
+  const config = defaults()
   try {
     const parsed = parseJsonc(await readFile(join(directory, ".opencode", CONFIG_FILE), "utf-8")) as Record<string, unknown>
     if (typeof parsed.enabled === "boolean") config.enabled = parsed.enabled
@@ -175,62 +184,97 @@ function isRetryable(error: V2Error | undefined, config: Config): boolean {
   return config.errorPatterns.some((p) => hay.includes(p.toLowerCase()))
 }
 
-function describe(config: Config, overrides?: Partial<Config>): string {
-  const c = overrides ? { ...config, ...overrides } : config
-  const max = c.maxConsecutive > 0 ? String(c.maxConsecutive) : "unlimited"
-  return `enabled=${c.enabled} throttle=${c.throttleMs}ms delay=${c.delayMs}ms max=${max}`
+function describe(config: Config): string {
+  const max = config.maxConsecutive > 0 ? String(config.maxConsecutive) : "unlimited"
+  return `enabled=${config.enabled} throttle=${config.throttleMs}ms delay=${config.delayMs}ms max=${max}`
 }
 
 /**
- * The plugins directory is both auto-discovered and listed explicitly in
- * opencode.json, so this module can be evaluated twice. Keep one live instance.
+ * OpenCode loads this plugin once per *location* inside a single process, and the
+ * event stream is server-wide. So state is split deliberately:
+ *
+ *  - One event subscription for the whole process. Two subscriptions would
+ *    double-send "continue" for the same session.
+ *  - Config is per location, resolved from event.location.directory, so two
+ *    locations with different opencode-auto-continue.jsonc behave independently.
+ *  - Events are ignored for directories where this plugin is not loaded, so the
+ *    server-wide stream cannot trigger a continue in an unrelated project.
+ *  - The /ac command is registered per location, because each location has its
+ *    own command list.
  */
-const GUARD = Symbol.for("opencode.auto-continue.v2.active")
+const SHARED = Symbol.for("opencode.auto-continue.v2")
+
+interface Shared {
+  /** Per-location config, loaded during setup. */
+  configs: Map<string, Config>
+  /** Directories where this plugin instance is set up. */
+  dirs: Set<string>
+  /** Directories that already have the command registered. */
+  commandDirs: Set<string>
+  /** Session-scoped runtime overrides from /ac. */
+  overrides: Map<string, Partial<Config>>
+  states: Map<string, SessionState>
+  timers: Map<string, ReturnType<typeof setTimeout>>
+  /** ctx used to send prompts; the first location to load provides it. */
+  sender?: { session: { prompt: (input: { sessionID: string; text: string }) => Promise<unknown> } }
+  started: boolean
+}
+
+function shared(): Shared {
+  const g = globalThis as Record<symbol, Shared | undefined>
+  let s = g[SHARED]
+  if (!s) {
+    s = {
+      configs: new Map(),
+      dirs: new Set(),
+      commandDirs: new Set(),
+      overrides: new Map(),
+      states: new Map(),
+      timers: new Map(),
+      started: false,
+    }
+    g[SHARED] = s
+  }
+  return s
+}
 
 export default Plugin.define({
   id: "opencode-auto-continue",
-  setup(ctx) {
-    const g = globalThis as Record<symbol, { config: Config; overrides: Map<string, Partial<Config>>; states: Map<string, SessionState>; timers: Map<string, ReturnType<typeof setTimeout>> } | undefined>
+  async setup(ctx) {
+    const s = shared()
+    const directory = ctx.location.directory
 
-    if (g[GUARD]) {
-      // Already active for this process; do not register a second listener.
-      return () => {}
-    }
+    // Resolve this location's config before any event can arrive.
+    s.configs.set(directory, await loadConfig(directory))
+    s.dirs.add(directory)
+    if (!s.sender) s.sender = ctx as unknown as Shared["sender"]
 
-    const config: Config = { ...DEFAULTS, errorPatterns: [...DEFAULT_ERROR_PATTERNS], excludePatterns: [...DEFAULT_EXCLUDE_PATTERNS] }
-    const overrides = new Map<string, Partial<Config>>()
-    const states = new Map<string, SessionState>()
-    const timers = new Map<string, ReturnType<typeof setTimeout>>()
+    const configFor = (dir: string | undefined): Config | undefined => (dir ? s.configs.get(dir) : undefined)
 
-    g[GUARD] = { config, overrides, states, timers }
-
-    const configPath = join(ctx.location.directory, ".opencode", CONFIG_FILE)
-    void loadConfig(ctx.location.directory).then((loaded) => Object.assign(config, loaded))
-
-    const effective = (sessionID: string): Config => {
-      const o = overrides.get(sessionID)
-      return o ? { ...config, ...o } : config
+    const effective = (sessionID: string, base: Config): Config => {
+      const o = s.overrides.get(sessionID)
+      return o ? { ...base, ...o } : base
     }
 
     const stateFor = (sessionID: string): SessionState => {
-      let s = states.get(sessionID)
-      if (!s) {
-        s = { pending: false, lastContinueAt: 0, consecutive: 0 }
-        states.set(sessionID, s)
+      let existing = s.states.get(sessionID)
+      if (!existing) {
+        existing = { pending: false, lastContinueAt: 0, consecutive: 0 }
+        s.states.set(sessionID, existing)
       }
-      return s
+      return existing
     }
 
-    async function sendContinue(sessionID: string): Promise<void> {
-      const state = states.get(sessionID)
+    async function sendContinue(sessionID: string, dir: string, base: Config): Promise<void> {
+      const state = s.states.get(sessionID)
       if (!state?.pending) return
 
-      const cfg = effective(sessionID)
-      if (!cfg.enabled) return
+      const config = effective(sessionID, base)
+      if (!config.enabled) return
 
       const now = Date.now()
-      if (now - state.lastContinueAt < cfg.throttleMs) return
-      if (cfg.maxConsecutive > 0 && state.consecutive >= cfg.maxConsecutive) {
+      if (now - state.lastContinueAt < config.throttleMs) return
+      if (config.maxConsecutive > 0 && state.consecutive >= config.maxConsecutive) {
         state.pending = false
         return
       }
@@ -242,124 +286,147 @@ export default Plugin.define({
       try {
         // prompt() returns the admitted inbox item, so this does not block on
         // the model response (the V2 equivalent of V1 promptAsync).
-        await ctx.session.prompt({ sessionID, text: CONTINUE_TEXT })
+        await s.sender?.session.prompt({ sessionID, text: CONTINUE_TEXT })
       } catch {
         // Session may have been removed/interrupted; nothing to do.
       }
+      void dir
     }
 
-    const controller = new AbortController()
-    void (async () => {
-      for await (const event of ctx.event.subscribe({ signal: controller.signal })) {
-        const data = event.data as Record<string, unknown> | undefined
-        if (!data) continue
+    if (!s.started) {
+      s.started = true
+      const controller = new AbortController()
+      void (async () => {
+        for await (const event of ctx.event.subscribe({ signal: controller.signal })) {
+          const data = event.data as Record<string, unknown> | undefined
+          if (!data) continue
 
-        if (event.type === "session.execution.failed") {
-          const sessionID = data.sessionID as string | undefined
-          if (!sessionID) continue
-          if (!config.enabled) continue
-          if (isRetryable(data.error as V2Error, effective(sessionID))) {
-            stateFor(sessionID).pending = true
-          }
-          continue
-        }
+          const location = (event as { location?: { directory?: string } }).location?.directory
+          // Only act on sessions in locations where this plugin is loaded.
+          const base = configFor(location)
+          if (!base) continue
 
-        if (event.type === "session.execution.succeeded") {
-          const sessionID = data.sessionID as string | undefined
-          if (!sessionID) continue
-          const state = states.get(sessionID)
-          // A completed run clears the consecutive-retry budget.
-          if (state) state.consecutive = 0
-          continue
-        }
-
-        if (event.type === "session.idle") {
-          const sessionID = data.sessionID as string | undefined
-          if (!sessionID) continue
-          const state = states.get(sessionID)
-          if (!state?.pending) continue
-          const cfg = effective(sessionID)
-          if (!cfg.enabled) continue
-          // Collapse duplicate idle events for the same pending continue.
-          const existing = timers.get(sessionID)
-          if (existing) clearTimeout(existing)
-          timers.set(
-            sessionID,
-            setTimeout(() => {
-              timers.delete(sessionID)
-              void sendContinue(sessionID)
-            }, cfg.delayMs),
-          )
-        }
-      }
-    })()
-
-    void ctx.command.transform((editor) => {
-      editor.add({
-        name: "ac",
-        description: "auto-continue status/on/off/reset (alias: auto-continue)",
-        execute: async ({ sessionID, prompt }) => {
-          const arg = prompt.text.trim().split(/\s+/).slice(1).join(" ").trim()
-          const [cmd, value] = arg.split(/\s+/)
-          const reply = (text: string) => ctx.session.synthetic({ sessionID, text })
-
-          const persist = async () => {
-            const payload: Record<string, unknown> = {
-              enabled: config.enabled,
-              throttleMs: config.throttleMs,
-              delayMs: config.delayMs,
-              maxConsecutive: config.maxConsecutive,
+          if (event.type === "session.execution.failed") {
+            const sessionID = data.sessionID as string | undefined
+            if (!sessionID) continue
+            if (!effective(sessionID, base).enabled) continue
+            if (isRetryable(data.error as V2Error, effective(sessionID, base))) {
+              stateFor(sessionID).pending = true
             }
-            if (config.errorPatterns.join("\u0000") !== DEFAULT_ERROR_PATTERNS.join("\u0000")) payload.errorPatterns = config.errorPatterns
-            if (config.excludePatterns.join("\u0000") !== DEFAULT_EXCLUDE_PATTERNS.join("\u0000")) payload.excludePatterns = config.excludePatterns
-            try {
-              await writeFile(configPath, JSON.stringify(payload, null, 2) + "\n", "utf-8")
-            } catch {
-              await reply(`auto-continue: could not write ${configPath}`)
-            }
+            continue
           }
 
-          const sessionOverrides = overrides.get(sessionID) ?? {}
-
-          switch (cmd) {
-            case undefined:
-            case "status":
-              await reply(`auto-continue v2: ${describe(effective(sessionID))}\nglobal: ${describe(config)}\nsession: ${Object.keys(sessionOverrides).length ? JSON.stringify(sessionOverrides) : "none"}\npatterns: ${config.errorPatterns.length} match / ${config.excludePatterns.length} exclude\nconfig: ${configPath}`)
-              return
-            case "on":
-              config.enabled = true
-              sessionOverrides.enabled = true
-              overrides.set(sessionID, sessionOverrides)
-              await persist()
-              await reply(`auto-continue enabled (${describe(effective(sessionID))})`)
-              return
-            case "off":
-              config.enabled = false
-              sessionOverrides.enabled = false
-              overrides.set(sessionID, sessionOverrides)
-              states.delete(sessionID)
-              await reply("auto-continue disabled")
-              return
-            case "reset": {
-              overrides.delete(sessionID)
-              states.delete(sessionID)
-              const loaded = await loadConfig(ctx.location.directory)
-              Object.assign(config, loaded)
-              await reply(`auto-continue reset to config (${describe(effective(sessionID))})`)
-              return
-            }
-            default:
-              await reply("usage: /ac [status|on|off|reset]")
+          if (event.type === "session.execution.succeeded") {
+            const sessionID = data.sessionID as string | undefined
+            if (!sessionID) continue
+            const state = s.states.get(sessionID)
+            // A completed run clears the consecutive-retry budget.
+            if (state) state.consecutive = 0
+            continue
           }
-        },
+
+          if (event.type === "session.idle") {
+            const sessionID = data.sessionID as string | undefined
+            if (!sessionID) continue
+            const state = s.states.get(sessionID)
+            if (!state?.pending) continue
+            const config = effective(sessionID, base)
+            if (!config.enabled) continue
+            // Collapse duplicate idle events for the same pending continue.
+            const existing = s.timers.get(sessionID)
+            if (existing) clearTimeout(existing)
+            s.timers.set(
+              sessionID,
+              setTimeout(() => {
+                s.timers.delete(sessionID)
+                void sendContinue(sessionID, location ?? "", base)
+              }, config.delayMs),
+            )
+          }
+        }
+      })()
+    }
+
+    // Register /ac for this location. Each location has its own command list,
+    // so de-duplicate per directory rather than process-wide.
+    if (!s.commandDirs.has(directory)) {
+      s.commandDirs.add(directory)
+      const configPath = join(directory, ".opencode", CONFIG_FILE)
+
+      void ctx.command.transform((editor) => {
+        editor.add({
+          name: "ac",
+          description: "auto-continue status/on/off/reset",
+          execute: async ({ sessionID, prompt }) => {
+            const arg = prompt.text.trim().split(/\s+/).slice(1).join(" ").trim()
+            const [cmd] = arg.split(/\s+/)
+            const base = configFor(directory) ?? defaults()
+            const reply = (text: string) => ctx.session.synthetic({ sessionID, text })
+            const sessionOverrides = s.overrides.get(sessionID) ?? {}
+
+            const persist = async () => {
+              const payload: Record<string, unknown> = {
+                enabled: base.enabled,
+                throttleMs: base.throttleMs,
+                delayMs: base.delayMs,
+                maxConsecutive: base.maxConsecutive,
+              }
+              if (base.errorPatterns.join(" ") !== DEFAULT_ERROR_PATTERNS.join(" ")) payload.errorPatterns = base.errorPatterns
+              if (base.excludePatterns.join(" ") !== DEFAULT_EXCLUDE_PATTERNS.join(" ")) payload.excludePatterns = base.excludePatterns
+              try {
+                await writeFile(configPath, JSON.stringify(payload, null, 2) + "\n", "utf-8")
+              } catch {
+                await reply(`auto-continue: could not write ${configPath}`)
+              }
+            }
+
+            switch (cmd) {
+              case undefined:
+              case "status":
+                await reply(
+                  [
+                    `auto-continue v2: ${describe(effective(sessionID, base))}`,
+                    `location: ${directory}`,
+                    `session overrides: ${Object.keys(sessionOverrides).length ? JSON.stringify(sessionOverrides) : "none"}`,
+                    `patterns: ${base.errorPatterns.length} match / ${base.excludePatterns.length} exclude`,
+                    `config: ${configPath}`,
+                  ].join("\n"),
+                )
+                return
+              case "on":
+                base.enabled = true
+                sessionOverrides.enabled = true
+                s.overrides.set(sessionID, sessionOverrides)
+                s.states.delete(sessionID)
+                await persist()
+                await reply(`auto-continue enabled (${describe(effective(sessionID, base))})`)
+                return
+              case "off":
+                base.enabled = false
+                sessionOverrides.enabled = false
+                s.overrides.set(sessionID, sessionOverrides)
+                s.states.delete(sessionID)
+                await reply("auto-continue disabled for this location")
+                return
+              case "reset": {
+                s.overrides.delete(sessionID)
+                s.states.delete(sessionID)
+                const reloaded = await loadConfig(directory)
+                s.configs.set(directory, reloaded)
+                await reply(`auto-continue reset to config (${describe(reloaded)})`)
+                return
+              }
+              default:
+                await reply("usage: /ac [status|on|off|reset]")
+            }
+          },
+        })
       })
-    })
+    }
 
     return () => {
-      controller.abort()
-      for (const t of timers.values()) clearTimeout(t)
-      timers.clear()
-      delete g[GUARD]
+      s.dirs.delete(directory)
+      s.commandDirs.delete(directory)
     }
   },
 })
