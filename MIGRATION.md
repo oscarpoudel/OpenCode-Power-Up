@@ -1,5 +1,15 @@
 # Migration Guide: Claude Code to OpenCode
 
+> **Applies to the `main` branch (OpenCode V1).**
+>
+> On the `v2` branch the plugin API has changed and **V1 plugin code does not
+> load**. The hook event mapping below describes the V1 plugin API — several of
+> those events (`message.updated`, `file.watcher.updated`,
+> `lsp.client.diagnostics`) do not exist in V2, and string hook keys are replaced
+> by `ctx.<domain>.hook(...)` calls. Agent, command, and skill configuration is
+> unaffected. See the "OpenCode V2" section in [README.md](README.md) for the
+> current event and hook mappings.
+
 This guide helps you migrate from Claude Code to OpenCode while using the Everything Claude Code (ECC) configuration.
 
 ## Overview

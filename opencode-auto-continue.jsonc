@@ -1,0 +1,16 @@
+{
+  // Auto-send "continue" when a transient error occurs, so sessions recover
+  // without manual intervention.
+  "enabled": true,
+
+  // Minimum ms between auto-continues for the same session.
+  // (carried over from the old auto-continue.json "cooldown_ms")
+  "throttleMs": 10000,
+
+  // Delay after the session becomes idle before sending "continue".
+  "delayMs": 500,
+
+  // Max consecutive auto-continues per session before giving up (0 = unlimited).
+  // (carried over from the old auto-continue.json "max_consecutive")
+  "maxConsecutive": 5
+}
